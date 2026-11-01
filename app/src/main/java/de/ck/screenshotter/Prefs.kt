@@ -29,6 +29,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("continuous", true)
         set(v) = sp.edit().putBoolean("continuous", v).apply()
 
+    /** Vom Nutzer gewählter Zielordner (SAF-Tree-URI) oder null = Standard (Download/Screenshotter). */
+    var folder: android.net.Uri?
+        get() = sp.getString("folder", null)?.let { android.net.Uri.parse(it) }
+        set(v) = sp.edit().putString("folder", v?.toString()).apply()
+
     /** Überlappende Bereiche zwischen aufeinanderfolgenden Aufnahmen entfernen (nur fortlaufend). */
     var removeOverlap: Boolean
         get() = sp.getBoolean("overlap", true)

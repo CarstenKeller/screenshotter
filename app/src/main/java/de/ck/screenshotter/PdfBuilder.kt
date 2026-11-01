@@ -12,6 +12,7 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import java.io.File
@@ -19,24 +20,48 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 
-/** Fügt die Einzelaufnahmen einer Sitzung zu einem PDF zusammen. */
+/** Fügt die Einzelaufnahmen einer Sitzung zu einem PDF zusammen und speichert es. */
 object PdfBuilder {
 
-    data class Result(val file: File, val downloadsUri: Uri?, val pages: Int, val images: Int)
+    /**
+     * @param file lokale Kopie (zum Öffnen/Teilen aus der App)
+     * @param savedUri gespeicherte Datei am gewählten Ort, null falls nur lokal
+     * @param location lesbare Beschreibung des Speicherorts
+     */
+    data class Result(val file: File, val savedUri: Uri?, val location: String, val pages: Int, val images: Int)
 
     // A4 in PostScript-Punkten (1/72 Zoll)
     private const val A4_W = 595
     private const val A4_H = 842
     private const val MARGIN = 24f
-    private const val GAP = 6f
+    private const val GAP = 8f
 
-    fun build(context: Context, images: List<File>, continuous: Boolean, removeOverlap: Boolean): Result {
+    fun defaultName(): String =
+        "Screenshotter_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+
+    /** Entfernt in Dateinamen unzulässige Zeichen und hängt ".pdf" an. */
+    fun sanitizeFileName(input: String): String {
+        var n = input.trim().replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
+        if (n.endsWith(".pdf", ignoreCase = true)) n = n.dropLast(4).trim()
+        if (n.isEmpty()) n = defaultName()
+        return n.take(120) + ".pdf"
+    }
+
+    fun build(
+        context: Context,
+        images: List<File>,
+        continuous: Boolean,
+        removeOverlap: Boolean,
+        fileName: String,
+        folder: Uri?
+    ): Result {
         require(images.isNotEmpty()) { "Keine Aufnahmen vorhanden" }
+        val name = sanitizeFileName(fileName)
         val outDir = File(context.filesDir, "pdf").apply { mkdirs() }
         outDir.listFiles()?.forEach { it.delete() } // nur das zuletzt erzeugte PDF behalten
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val outFile = File(outDir, "Screenshotter_$stamp.pdf")
+        val outFile = File(outDir, name)
 
         val doc = PdfDocument()
         val pages = try {
@@ -48,8 +73,19 @@ object PdfBuilder {
         FileOutputStream(outFile).use { doc.writeTo(it) }
         doc.close()
 
-        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) copyToDownloads(context, outFile) else null
-        return Result(outFile, uri, pages, images.size)
+        if (folder != null) {
+            val uri = runCatching { copyToFolder(context, outFile, folder) }.getOrNull()
+            if (uri != null) return Result(outFile, uri, Folders.label(folder) + "/" + name, pages, images.size)
+            // Zugriff verloren (z. B. Ordner gelöscht) -> auf Standardort ausweichen
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val uri = copyToDownloads(context, outFile)
+            if (uri != null) {
+                val hint = if (folder != null) " (gewählter Ordner nicht erreichbar)" else ""
+                return Result(outFile, uri, "Download/Screenshotter/$name$hint", pages, images.size)
+            }
+        }
+        return Result(outFile, null, "App-Speicher (über „Teilen“ sichern)", pages, images.size)
     }
 
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
@@ -70,12 +106,18 @@ object PdfBuilder {
     }
 
     /**
-     * Aufnahmen untereinander auf A4-Seiten. Ist [removeOverlap] gesetzt, wird bei gleich breiten
-     * Folgeaufnahmen der Bereich abgeschnitten, der bereits am Ende der vorigen Aufnahme zu sehen war
-     * (typisch beim Weiterscrollen).
+     * Aufnahmen untereinander auf A4-Seiten. Eine Aufnahme wird nie über einen Seitenumbruch
+     * geteilt: passt sie nicht mehr auf die Seite, beginnt eine neue. Ist sie höher als eine ganze
+     * Seite, wird sie so verkleinert, dass sie vollständig auf eine Seite passt.
+     *
+     * Überlappungsentfernung ([removeOverlap]): Folgt eine Aufnahme auf derselben Seite direkt auf
+     * ihre Vorgängerin, wird der schon sichtbare obere Teil weggelassen, sodass ein nahtloser
+     * Übergang entsteht. Am Anfang einer neuen Seite steht die Aufnahme dagegen immer vollständig,
+     * damit dort nichts angeschnitten beginnt.
      */
     private fun layoutContinuous(doc: PdfDocument, images: List<File>, removeOverlap: Boolean): Int {
         val contentW = A4_W - 2 * MARGIN
+        val contentH = A4_H - 2 * MARGIN
         val bottom = A4_H - MARGIN
         var pageNo = 0
         var page: PdfDocument.Page? = null
@@ -91,26 +133,37 @@ object PdfBuilder {
         }
 
         var prevSig: RowSignature? = null
+        var prevScale = 0f
         newPage()
         for (f in images) {
             val bmp = decode(f)
             val sig = if (removeOverlap) RowSignature.of(bmp) else null
-            val skipTop = if (sig != null && prevSig != null) Overlap.find(prevSig, sig) else 0
+            val overlap = if (sig != null && prevSig != null) Overlap.find(prevSig, sig) else 0
             prevSig = sig
 
-            if (cursorY > MARGIN && skipTop == 0) cursorY += GAP
-            val scale = contentW / bmp.width
-            var srcY = skipTop
-            while (srcY < bmp.height) {
-                val rowsFit = ((bottom - cursorY) / scale).toInt()
-                if (rowsFit < 1) {
-                    newPage(); continue
-                }
-                val rows = minOf(bmp.height - srcY, rowsFit)
-                val dst = RectF(MARGIN, cursorY, MARGIN + contentW, cursorY + rows * scale)
-                page!!.canvas.drawBitmap(bmp, Rect(0, srcY, bmp.width, srcY + rows), dst, paint)
-                cursorY += rows * scale
-                srcY += rows
+            val scale = minOf(contentW / bmp.width, contentH / bmp.height)
+            val drawW = bmp.width * scale
+            val x = MARGIN + (contentW - drawW) / 2f
+            val sameScale = abs(scale - prevScale) < 1e-4f
+            prevScale = scale
+
+            if (overlap >= bmp.height && cursorY > MARGIN && sameScale) {
+                bmp.recycle(); continue // reine Wiederholung der vorigen Aufnahme
+            }
+
+            val restH = (bmp.height - overlap) * scale
+            if (overlap > 0 && cursorY > MARGIN && sameScale && cursorY + restH <= bottom + 0.5f) {
+                // nahtlos an die vorige Aufnahme anschließen
+                val dst = RectF(x, cursorY, x + drawW, cursorY + restH)
+                page!!.canvas.drawBitmap(bmp, Rect(0, overlap, bmp.width, bmp.height), dst, paint)
+                cursorY += restH
+            } else {
+                val fullH = bmp.height * scale
+                val gap = if (cursorY > MARGIN) GAP else 0f
+                if (cursorY + gap + fullH > bottom + 0.5f) newPage()
+                else cursorY += gap
+                page!!.canvas.drawBitmap(bmp, null, RectF(x, cursorY, x + drawW, cursorY + fullH), paint)
+                cursorY += fullH
             }
             bmp.recycle()
         }
@@ -120,6 +173,22 @@ object PdfBuilder {
 
     private fun decode(f: File): Bitmap =
         BitmapFactory.decodeFile(f.absolutePath) ?: error("Bild nicht lesbar: ${f.name}")
+
+    private fun copyToFolder(context: Context, file: File, treeUri: Uri): Uri {
+        val resolver = context.contentResolver
+        val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri))
+        // Bei gleichnamiger Datei hängt der Anbieter üblicherweise selbst " (1)" o. Ä. an.
+        val doc = DocumentsContract.createDocument(resolver, parent, "application/pdf", file.name)
+            ?: error("Datei konnte nicht angelegt werden")
+        try {
+            resolver.openOutputStream(doc)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+                ?: error("Datei konnte nicht geschrieben werden")
+        } catch (t: Throwable) {
+            runCatching { DocumentsContract.deleteDocument(resolver, doc) }
+            throw t
+        }
+        return doc
+    }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun copyToDownloads(context: Context, file: File): Uri? {

@@ -12,10 +12,13 @@ Alle Aufnahmen einer Sitzung werden anschließend zu einem PDF zusammengefügt.
 - **Aufnahme** per `MediaProjection` → `VirtualDisplay` → `ImageReader`; Overlays werden für ~300 ms
   ausgeblendet, dann wird das aktuelle Bild auf den Rahmen zugeschnitten und als PNG im App-Speicher abgelegt.
 - **PDF** mit `android.graphics.pdf.PdfDocument`:
-  - *fortlaufend* (Standard): Aufnahmen untereinander auf A4-Seiten, lange Bilder werden auf Folgeseiten umbrochen;
-    optional werden Überlappungen zwischen aufeinanderfolgenden Aufnahmen (beim Scrollen) per Zeilenvergleich entfernt (Heuristik, experimentell);
+  - *fortlaufend* (Standard): Aufnahmen untereinander auf A4-Seiten. Eine Aufnahme wird nie über einen
+    Seitenumbruch geteilt (passt sie nicht mehr, beginnt eine neue Seite; zu hohe Aufnahmen werden auf Seitenhöhe verkleinert).
+    Optional werden Überlappungen zwischen aufeinanderfolgenden Aufnahmen (beim Scrollen) per Zeilenvergleich entfernt
+    (Heuristik); am Anfang einer neuen Seite steht die Aufnahme aber immer vollständig;
   - oder *eine Seite pro Aufnahme*.
-- Ablage: ab Android 10 als Kopie in `Download/Screenshotter`, außerdem Öffnen/Teilen aus der App.
+- Ablage: Dateiname wird beim Speichern abgefragt, Zielordner frei wählbar (Storage Access Framework);
+  Standard ist `Download/Screenshotter` (ab Android 10). Öffnen/Teilen zusätzlich aus der App.
   Ungesicherte Aufnahmen bleiben nach dem Beenden erhalten und können in der App noch zu einem PDF gemacht oder verworfen werden.
 
 ## Voraussetzungen / Grenzen
@@ -34,4 +37,4 @@ Alle Aufnahmen einer Sitzung werden anschließend zu einem PDF zusammengefügt.
 ```
 
 Die APK liegt danach unter `app/build/outputs/apk/debug/`. Jeder Push baut sie außerdem per GitHub Actions
-(Artefakt `screenshotter-debug-apk`).
+und veröffentlicht sie als Vorab-Release `build-<N>` mit der Datei `Screenshotter-0.1.0-b<N>.apk`.

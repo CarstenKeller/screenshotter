@@ -51,6 +51,7 @@ class CaptureService : Service() {
         private const val TAG = "CaptureService"
         const val ACTION_START = "de.ck.screenshotter.START"
         const val ACTION_STOP = "de.ck.screenshotter.STOP"
+        const val ACTION_SESSION_CHANGED = "de.ck.screenshotter.SESSION_CHANGED"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_DATA = "data"
         private const val CHANNEL = "capture"
@@ -95,11 +96,28 @@ class CaptureService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private val sessionReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (bar != null) refreshCounter()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         store = SessionStore(this)
         prefs = Prefs(this)
+        val filter = android.content.IntentFilter(ACTION_SESSION_CHANGED)
+        registerSessionReceiver(filter)
+    }
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private fun registerSessionReceiver(filter: android.content.IntentFilter) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(sessionReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(sessionReceiver, filter)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -143,6 +161,7 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         running = false
+        runCatching { unregisterReceiver(sessionReceiver) }
         overlay?.let { runCatching { wm.removeView(it) } }
         bar?.let { runCatching { wm.removeView(it) } }
         overlay = null; bar = null
@@ -500,19 +519,12 @@ class CaptureService : Service() {
             Toast.makeText(this, "Noch keine Aufnahmen", Toast.LENGTH_SHORT).show()
             return
         }
-        Toast.makeText(this, "PDF wird erstellt …", Toast.LENGTH_SHORT).show()
-        PdfJob.run(this) { ok, msg ->
-            refreshCounter()
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-            if (ok) {
-                // Die sichtbaren Overlays erlauben den Aktivitätsstart aus dem Hintergrund.
-                runCatching {
-                    startActivity(
-                        Intent(this, MainActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    )
-                }
-            }
+        if (overlay?.editing == true) setEditing(false)
+        // Die sichtbaren Overlays erlauben den Aktivitätsstart aus dem Hintergrund.
+        runCatching {
+            startActivity(Intent(this, SavePdfActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure {
+            Toast.makeText(this, "Dialog konnte nicht geöffnet werden: ${it.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -522,16 +534,17 @@ object PdfJob {
     private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
-    fun run(context: Context, done: (ok: Boolean, message: String) -> Unit) {
+    fun run(context: Context, fileName: String, done: (ok: Boolean, message: String) -> Unit) {
         val app = context.applicationContext
         executor.execute {
             val store = SessionStore(app)
             val prefs = Prefs(app)
             val msg = try {
-                val r = PdfBuilder.build(app, store.images(), prefs.continuousLayout, prefs.removeOverlap)
+                val r = PdfBuilder.build(
+                    app, store.images(), prefs.continuousLayout, prefs.removeOverlap, fileName, prefs.folder
+                )
                 store.clear()
-                val where = if (r.downloadsUri != null) "Download/Screenshotter" else "App-Speicher (über „Teilen“ sichern)"
-                true to "PDF mit ${r.pages} Seite(n) aus ${r.images} Aufnahme(n) gespeichert: $where"
+                true to "PDF mit ${r.pages} Seite(n) aus ${r.images} Aufnahme(n) gespeichert: ${r.location}"
             } catch (t: Throwable) {
                 Log.e("PdfJob", "PDF fehlgeschlagen", t)
                 false to "PDF fehlgeschlagen: ${t.message}"

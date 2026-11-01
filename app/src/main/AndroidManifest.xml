@@ -23,6 +23,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".SavePdfActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/DialogTheme"
+            android:windowSoftInputMode="adjustResize|stateVisible" />
+
         <service
             android:name=".CaptureService"
             android:exported="false"

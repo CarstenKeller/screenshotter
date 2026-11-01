@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     private lateinit var pdfText: TextView
     private lateinit var pdfButtons: LinearLayout
     private lateinit var overlapBox: CheckBox
+    private lateinit var folderText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -117,6 +118,15 @@ class MainActivity : Activity() {
         col.addView(contBox)
         col.addView(overlapBox)
 
+        col.addView(body("Speicherort:"))
+        folderText = body().apply { setTypeface(typeface, Typeface.BOLD) }
+        col.addView(folderText)
+        col.addView(row().apply {
+            addView(button("Ordner wählen …") { Folders.pick(this@MainActivity) })
+            addView(button("Standard") { Folders.reset(this@MainActivity); refresh() })
+        })
+        col.addView(body("Den Dateinamen legst du beim Erstellen des PDFs fest."))
+
         col.addView(heading("3. Aufnehmen"))
         col.addView(body(
             "Steuerleiste: 📷 aufnehmen · ↶ letzte löschen · ▭ Bereich ändern (✓ übernehmen) · " +
@@ -159,6 +169,7 @@ class MainActivity : Activity() {
     }
 
     private fun refresh() {
+        folderText.text = Folders.label(prefs.folder)
         val canOverlay = Settings.canDrawOverlays(this)
         overlayStatus.text = if (canOverlay) "✓ Einblenden über anderen Apps ist erlaubt."
         else "✗ Für den Auswahlrahmen muss „Über anderen Apps einblenden“ erlaubt werden."
@@ -178,8 +189,7 @@ class MainActivity : Activity() {
         val pdf = lastPdf()
         pdfText.text = when {
             pdf == null -> "Noch kein PDF erstellt."
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> "${pdf.name}\n(Kopie unter Download/Screenshotter)"
-            else -> "${pdf.name}\n(Über „Teilen“ an einem Ort deiner Wahl sichern.)"
+            else -> pdf.name
         }
         pdfButtons.visibility = if (pdf == null) View.GONE else View.VISIBLE
     }
@@ -208,6 +218,9 @@ class MainActivity : Activity() {
     @Deprecated("Activity-Result-API wird bewusst nicht verwendet, um ohne AndroidX-Activity auszukommen")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (Folders.onResult(this, requestCode, resultCode, data)) {
+            refresh(); return
+        }
         if (requestCode != REQ_PROJECTION) return
         if (resultCode != RESULT_OK || data == null) {
             Toast.makeText(this, "Bildschirmaufnahme wurde nicht erlaubt", Toast.LENGTH_SHORT).show()
@@ -223,11 +236,7 @@ class MainActivity : Activity() {
     }
 
     private fun createPdf() {
-        Toast.makeText(this, "PDF wird erstellt …", Toast.LENGTH_SHORT).show()
-        PdfJob.run(this) { _, msg ->
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-            refresh()
-        }
+        startActivity(Intent(this, SavePdfActivity::class.java))
     }
 
     private fun lastPdf(): File? =
