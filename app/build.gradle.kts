@@ -11,8 +11,21 @@ android {
         applicationId = "de.ck.screenshotter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // In der CI fortlaufende Build-Nummer, damit jede Version über die vorige installiert werden kann.
+        val build = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionCode = build
+        versionName = "0.1.0-b$build"
+    }
+
+    signingConfigs {
+        // Fester Schlüssel im Repo, damit alle Builds dieselbe Signatur haben und Updates ohne
+        // Deinstallation möglich sind. Nur für private Nutzung gedacht, nicht für den Play Store.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
