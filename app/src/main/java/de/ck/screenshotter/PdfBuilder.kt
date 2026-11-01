@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -120,6 +121,7 @@ object PdfBuilder {
     private fun decode(f: File): Bitmap =
         BitmapFactory.decodeFile(f.absolutePath) ?: error("Bild nicht lesbar: ${f.name}")
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun copyToDownloads(context: Context, file: File): Uri? {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, file.name)
