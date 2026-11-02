@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Screenshotter</title>
+<meta name="description" content="Screenshots zuschneiden und zu einem PDF zusammenfügen – läuft vollständig lokal im Browser.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Screenshotter">
+<meta name="theme-color" content="#1E6FD9">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1b1d21; --muted: #5d6470; --line: #d9dde3;
+    --brand: #1E6FD9; --brand-text: #ffffff; --danger: #c62828; --ok: #2e7d32;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121417; --card: #1c1f24; --text: #eceef1; --muted: #a0a7b2; --line: #343a42;
+      --brand: #4a90ef; --brand-text: #0b1220; --danger: #ef6b6b; --ok: #6cc070;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121417; --card: #1c1f24; --text: #eceef1; --muted: #a0a7b2; --line: #343a42;
+    --brand: #4a90ef; --brand-text: #0b1220; --danger: #ef6b6b; --ok: #6cc070;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 24px; margin: 8px 0 4px; }
+  h2 { font-size: 18px; margin: 0 0 10px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 14px 0; }
+  button, .button {
+    font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer;
+  }
+  button.primary, .button.primary { background: var(--brand); color: var(--brand-text); border-color: var(--brand); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  input[type=text] {
+    font: inherit; width: 100%; padding: 10px 12px; min-height: 44px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  }
+  label.check { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0; }
+  label.check input { width: 22px; height: 22px; margin-top: 1px; flex: none; }
+  #thumbs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 10px; }
+  .thumb { flex: none; width: 110px; border: 2px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+  .thumb.active { border-color: var(--brand); }
+  .thumb img { display: block; width: 100%; height: 130px; object-fit: cover; object-position: top; }
+  .thumb .bar { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 2px; }
+  .thumb .bar button { min-height: 32px; padding: 2px 8px; border-radius: 8px; }
+  #editorWrap { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #editor { display: block; width: 100%; height: auto; max-height: 75vh; object-fit: contain; border-radius: 8px; background: #000; touch-action: none; }
+  .hidden { display: none !important; }
+  #progress { width: 100%; height: 10px; }
+  .status { margin-top: 10px; }
+  .status.error { color: var(--danger); }
+  .status.ok { color: var(--ok); }
+  ol.steps { padding-left: 20px; margin: 6px 0; }
+  ol.steps li { margin: 4px 0; }
+  details summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Screenshotter</h1>
+  <p class="muted">Screenshots zuschneiden und zu einem PDF zusammenfügen. Alles läuft lokal auf diesem Gerät – es werden keine Bilder hochgeladen.</p>
+
+  <section>
+    <details id="howto">
+      <summary>So nimmst du auf dem iPad auf</summary>
+      <ol class="steps">
+        <li>Einmalig: <b>Einstellungen → Bedienungshilfen → Tippen → AssistiveTouch</b> einschalten und unter
+          „Aktionen anpassen“ bei <b>Einmal tippen</b> die Aktion <b>Bildschirmfoto</b> wählen.</li>
+        <li>In der App mit den Inhalten (z. B. Noten) den schwebenden Knopf antippen → Screenshot in voller Auflösung.
+          Der Knopf selbst ist auf dem Foto nicht zu sehen; die App darunter bleibt normal bedienbar.</li>
+        <li>Weiterscrollen, wieder antippen – so oft du willst. Etwas Überlappung zwischen den Bildern ist gut,
+          sie wird beim Zusammenfügen erkannt und entfernt.</li>
+        <li>Hierher wechseln, Screenshots auswählen, Bereich festlegen, PDF erstellen.</li>
+      </ol>
+      <p class="muted">Tipp: Über „Teilen → Zum Home-Bildschirm“ wird diese Seite zu einer App, die auch offline funktioniert.</p>
+    </details>
+  </section>
+
+  <section>
+    <h2>1. Screenshots auswählen</h2>
+    <div class="row">
+      <label class="button primary" for="files">Bilder wählen …</label>
+      <input id="files" type="file" accept="image/*" multiple class="hidden">
+      <button id="sortName" disabled>Nach Name sortieren</button>
+      <button id="sortTime" disabled>Nach Zeit sortieren</button>
+      <button id="clearAll" disabled>Alle entfernen</button>
+    </div>
+    <p class="muted" id="fileInfo">Noch keine Bilder gewählt. Reihenfolge im PDF = Reihenfolge hier; mit ◀ ▶ verschiebbar.</p>
+    <div id="thumbs"></div>
+  </section>
+
+  <section id="regionSection" class="hidden">
+    <h2>2. Bereich festlegen</h2>
+    <p class="muted">Rahmen aufziehen, verschieben oder an Ecken und Kanten ziehen. Gilt für alle Bilder; ein Tipp auf ein Vorschaubild zeigt es hier zur Kontrolle.</p>
+    <div id="editorWrap"><canvas id="editor"></canvas></div>
+    <div class="row" style="margin-top:10px">
+      <button id="fullImage">Ganzes Bild</button>
+      <span class="muted" id="regionInfo"></span>
+    </div>
+  </section>
+
+  <section id="optSection" class="hidden">
+    <h2>3. PDF</h2>
+    <label class="check"><input type="checkbox" id="continuous" checked>
+      <span>Fortlaufend auf A4-Seiten (sonst: eine Seite pro Aufnahme). Aufnahmen werden nie über einen Seitenumbruch geteilt.</span></label>
+    <label class="check"><input type="checkbox" id="overlap" checked>
+      <span>Überlappungen beim Weiterscrollen entfernen (nur fortlaufend; am Anfang einer neuen Seite steht die Aufnahme immer vollständig)</span></label>
+    <p class="muted">Qualität: Die Bilder werden in voller Originalauflösung und verlustfrei (PNG) eingebettet.</p>
+    <p style="margin-top:14px"><label for="name">Dateiname</label></p>
+    <input type="text" id="name" autocomplete="off" autocapitalize="sentences">
+    <p class="muted">„.pdf“ wird automatisch angehängt. Den Speicherort wählst du beim Sichern (Teilen → „In Dateien sichern“).</p>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="build">PDF erstellen</button>
+    </div>
+    <progress id="progress" class="hidden" max="1" value="0"></progress>
+    <div id="status" class="status"></div>
+    <div id="resultRow" class="row hidden" style="margin-top:10px">
+      <button class="primary" id="share">In Dateien sichern / Teilen</button>
+      <button id="download">Herunterladen</button>
+      <button id="view">Ansehen</button>
+    </div>
+  </section>
+
+  <p class="muted" style="text-align:center">Screenshotter · PDF-Erzeugung mit pdf-lib (MIT)</p>
+</main>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

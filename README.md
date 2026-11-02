@@ -1,4 +1,12 @@
-# Screenshotter (Android)
+# Screenshotter
+
+- **Android-App** (`app/`): Overlay-Rahmen und Auslöser über anderen Apps, PDF direkt auf dem Gerät.
+- **Web-App für iPad/iPhone** (`web/`): iPadOS erlaubt keine Overlays fremder Apps. Aufgenommen wird daher
+  mit dem System-Screenshot über den schwebenden AssistiveTouch-Knopf; die Web-App schneidet die Screenshots
+  auf einen Bereich zu, entfernt Überlappungen und erstellt das PDF – vollständig lokal im Browser
+  (kein Upload). Veröffentlicht per GitHub Pages, offlinefähig, als „Home-Bildschirm-App“ installierbar.
+
+## Android
 
 Overlay-Screenshots eines frei wählbaren Bildschirmbereichs – während die App darunter bedienbar bleibt.
 Alle Aufnahmen einer Sitzung werden anschließend zu einem PDF zusammengefügt.
